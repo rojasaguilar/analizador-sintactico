@@ -84,6 +84,7 @@ class Parser:
             self.index = 0
             self.current = self.tokens[self.index] if self.tokens else None
             self.previous = None #PRUEBA DEL TOKEN ANTERIOR 
+            self.errores = []
 
         def advance(self):
             self.index += 1
@@ -116,8 +117,19 @@ class Parser:
                     raise ErrorSintactico(1000,f"Se esperaba '{valor or tipo}' en línea {linea}, columna {columna}")
 
         def parse(self):
+            self.errores.clear()
             while self.current[0] != 'EOF':
-                self.instruccion()
+                try:
+                    self.instruccion()
+                except ErrorSintactico as e:
+                    self.errores.append(e)
+                    self.advance()
+                #     self.salto_a_siguiente_instruccion()
+                #     print('current:', self.current)
+                # except ErrorLexico as e:
+                #     self.errores.append(e)
+                #     print("errhro")
+                #     self.salto_a_siguiente_instruccion()
 
         def instruccion(self):
             if self.current[0] == 'COMENTARIO':
@@ -147,7 +159,7 @@ class Parser:
                 elif self.current[1] == 'router-id':
                     self.config_routerid()
                 else:
-                    raise SyntaxError(f"Instrucción desconocida después de 'set': {self.current[1]}")
+                    raise ErrorSintactico(2000,f"Instrucción desconocida después de 'set': {self.current[1]}")
             elif self.current[1] == 'generate':
                 self.advance()
                 if self.current[1] == 'dhcp':
@@ -244,19 +256,19 @@ class Parser:
             self.match('wildcard', 'wildcard')
             self.match('for', 'for')
             self.match('IDENTIFICADOR')
-            self.match('PUNTOYCOMA')
+            self.match('PUNTOYCOMA', ';')
 
         def print_range(self):
             self.match('range', 'range')
             self.match('for', 'for')
             self.match('IDENTIFICADOR')
-            self.match('PUNTOYCOMA')
+            self.match('PUNTOYCOMA', ';')
             
         def print_gateway(self):
             self.match('gateway', 'gateway')
             self.match('for', 'for')
             self.match('IDENTIFICADOR')
-            self.match('PUNTOYCOMA')
+            self.match('PUNTOYCOMA', ';')
 
         def lista_numeros(self):
             self.match('NUMERO')
@@ -269,6 +281,12 @@ class Parser:
             while self.current[1] == ',':
                 self.advance()
                 self.match('NETWORK')
+
+        # def salto_a_siguiente_instruccion(self):
+        # # # Salta hasta el siguiente punto y coma o fin del archivo
+        #     while self.index < len(self.tokens) and self.current[1] != 'PUNTOYCOMA':
+        #         self.advance() 
+        #         print('while',self.current)
 
 
 # --- INTERFAZ GRÁFICA ---
@@ -383,23 +401,28 @@ class NetworkLangEditor:
         except ErrorLexico as e:
             self._mostrar_salida(str(e), error=True) #CAPTURA DE ERRORES Y COMPARACION CON LOS CREADOS
 
-    
     def compilar_sintactico(self):
-        try:
+        # try:
             codigo = self.input_text.get('1.0', 'end-1c')
             self.texto_salida.config(state='normal'); self.texto_salida.delete('1.0','end')
             tokens = Lexico(codigo).tokenize()
             print(tokens)
             parser = Parser(tokens)
             parser.parse()
-        except ErrorLexico as e:
-            self._mostrar_salida(str(e), error=True)
-        # except SyntaxError as e:
-        #     self._mostrar_salida(str(e), error=True) #CAPTURA DE ERRORES Y COMPARACION CON LOS CREADOS
-        except ErrorSintactico as e:
-            self._mostrar_salida(str(e), error=True) #CAPTURA DE ERRORES Y COMPARACION CON LOS CREADOS
-        
+            self.texto_salida.config(state='normal')
+           
+        # except ErrorLexico as e:
+        #     # self._mostrar_salida(str(e), error=True)
 
+        # # except SyntaxError as e:
+        # #     self._mostrar_salida(str(e), error=True) #CAPTURA DE ERRORES Y COMPARACION CON LOS CREADOS
+        # except ErrorSintactico as e:
+            for error in parser.errores:
+                 self.texto_salida.insert('end', str(error) + '\n')
+                # self._mostrar_salida(str(error), error=True)
+        #     print("hello")
+            # self._mostrar_salida(str(e), error=True) #CAPTURA DE ERRORES Y COMPARACION CON LOS CREADOS
+           
 
     #CLASE QUE MUESTRA LOS TOKENS
     def _mostrar_tokens(self, toks):
