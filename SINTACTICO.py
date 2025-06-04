@@ -42,40 +42,44 @@ class Lexico:
             ('IDENTIFICADOR',r"\b[A-Za-z_][A-Za-z0-9_-]*\b"),
             ('CARACTER_INVALIDO', r'.')
         ]
+        self.errores = []
         self.patron_principal = re.compile('|'.join(f"(?P<{n}>{p})" for n,p in patrones_lexemas)) #ES LA EXPRESION QUE "UNE" TODOS LOS PATRONES
     def tokenize(self):
-            numero_linea = 1; linea_inicial = 0; tokens = []
-            for mo in self.patron_principal.finditer(self.codigo):
-                componente_lexico, lexema = mo.lastgroup, mo.group()
-                col = mo.start() - linea_inicial + 1
-                #SI ES COMENTARIO, IGNORALO
-                if componente_lexico == 'COMENTARIO':
-                    tokens.append((componente_lexico, lexema.lower(), numero_linea, col)); continue
-                print(numero_linea)
-                #SI ES NUEVA LINEA, IGNORALA
-                if componente_lexico == 'SALTOLINEA':
-                    linea_inicial = mo.end(); numero_linea += 1; continue
-                #SI ES SALTO DE LINEA, IGNORA
-                if componente_lexico == 'SALTAR': continue
-                #SI EL CARACTER ES INVALIDO
-                if componente_lexico == 'CARACTER_INVALIDO':
-                    raise ErrorLexico(100, f"Carácter no válido '{lexema}' en línea {numero_linea}, columna {col}")
-                # EXCEPCION PARA IDENTIFICADOR
-                if componente_lexico == 'IDENTIFICADOR':
-                    if lexema in self.palabrasReservadas:
-                        componente_lexico = lexema
-                    elif len(lexema) > 15:
-                        raise ErrorLexico(200, f"Identificador demasiado largo '{lexema}' en línea {numero_linea}")
-                # VALIDACION PARA LAS NETWORK, QUE LOS OCTETOS NO SUPEREN LOS 255
-                if componente_lexico == 'NETWORK':
-                    octetos = [int(o) for o in self.ip_patron.match(lexema).groups()] #VERIFICACION POR OCTETOS
-                    if any(o > 255 for o in octetos): #SI UN OCTETO SUPERA LOS 255 BITS
-                        raise ErrorLexico(300, f"IP no puede superar 255 en línea {numero_linea}") 
-                tokens.append((componente_lexico, lexema, numero_linea, col))
-            #TOKENS INVALIDOS
-            if not tokens:
-                raise ErrorLexico(400, "No se encontraron tokens válidos")
-            return tokens
+            # try:
+                numero_linea = 1; linea_inicial = 0; tokens = []
+                for mo in self.patron_principal.finditer(self.codigo):
+                    componente_lexico, lexema = mo.lastgroup, mo.group()
+                    col = mo.start() - linea_inicial + 1
+                    #SI ES COMENTARIO, IGNORALO
+                    if componente_lexico == 'COMENTARIO':
+                        tokens.append((componente_lexico, lexema.lower(), numero_linea, col)); continue
+                    print(numero_linea)
+                    #SI ES NUEVA LINEA, IGNORALA
+                    if componente_lexico == 'SALTOLINEA':
+                        linea_inicial = mo.end(); numero_linea += 1; continue
+                    #SI ES SALTO DE LINEA, IGNORA
+                    if componente_lexico == 'SALTAR': continue
+                    #SI EL CARACTER ES INVALIDO
+                    if componente_lexico == 'CARACTER_INVALIDO':
+                        raise ErrorLexico(100, f"Carácter no válido '{lexema}' en línea {numero_linea}, columna {col}")
+                    # EXCEPCION PARA IDENTIFICADOR
+                    if componente_lexico == 'IDENTIFICADOR':
+                        if lexema in self.palabrasReservadas:
+                            componente_lexico = lexema
+                        elif len(lexema) > 15:
+                            raise ErrorLexico(200, f"Identificador demasiado largo '{lexema}' en línea {numero_linea}")
+                    # VALIDACION PARA LAS NETWORK, QUE LOS OCTETOS NO SUPEREN LOS 255
+                    if componente_lexico == 'NETWORK':
+                        octetos = [int(o) for o in self.ip_patron.match(lexema).groups()] #VERIFICACION POR OCTETOS
+                        if any(o > 255 for o in octetos): #SI UN OCTETO SUPERA LOS 255 BITS
+                            raise ErrorLexico(300, f"IP no puede superar 255 en línea {numero_linea}") 
+                    tokens.append((componente_lexico, lexema, numero_linea, col))
+                #TOKENS INVALIDOS
+                if not tokens:
+                    raise ErrorLexico(400, "No se encontraron tokens válidos")
+                return tokens
+            # except ErrorLexico as e:
+            #     self.errores.append(e)
 
 class Parser:
         def __init__(self, tokens):
@@ -92,12 +96,6 @@ class Parser:
                 self.previous = self.tokens[self.index] 
             else:
                 self.current = ('EOF', 'EOF')
-
-        # def match(self, tipo, valor=None):
-        #     if self.current[0] == tipo and (valor is None or self.current[1] == valor):
-        #         self.advance()
-        #     else:
-        #         raise ErrorSintactico(1100,f"Se esperaba '{valor or tipo}' en línea {self.current[2]}, columna {self.current[3]}")
         
         def match(self, tipo, valor=None):
             if self.current[0] == tipo and (valor is None or self.current[1] == valor):
@@ -111,7 +109,7 @@ class Parser:
                 elif tipo == 'NUMERO':
                     raise ErrorSintactico(910, f"Se esperaba un número en línea {linea}, columna {columna}")
                 elif tipo == 'PUNTOYCOMA':
-                    raise ErrorSintactico(910, f"Se esperaba un punto y coma en linea {linea} despues de {self.previous[1]} ")
+                    raise ErrorSintactico(932, f"Se esperaba un punto y coma en linea {linea-1} columna {columna} ")
                 else:
                     raise ErrorSintactico(1000,f"Se esperaba '{valor or tipo}' en línea {linea}, columna {columna}")
 
@@ -126,12 +124,6 @@ class Parser:
                 except ErrorLexico as e:
                     self.errores.append(e)
                     self.advance()
-                #     self.salto_a_siguiente_instruccion()
-                #     print('current:', self.current)
-                # except ErrorLexico as e:
-                #     self.errores.append(e)
-                #     print("errhro")
-                #     self.salto_a_siguiente_instruccion()
 
         def instruccion(self):
             if self.current[0] == 'COMENTARIO':
@@ -174,10 +166,8 @@ class Parser:
                     self.generar_eigrp()
                 elif self.current[1] == 'ssh':
                     self.generar_ssh()
-                # else:
-                #     raise ErrorSintactico(1200,f"Tipo de generación desconocido: {self.current[1]} en línea {self.current[2]}, columna {self.current[3]}")
             else:
-                raise ErrorSintactico(1000,f"Instrucción no reconocida: {self.current[1]} en línea {self.current[2]}, columna {self.current[3]}")
+                raise ErrorSintactico(1000,f"Inesperado: {self.current[1]} en línea {self.current[2]}, columna {self.current[3]}")
 
         def declaracion_red(self):
             self.match('networkList')
@@ -286,13 +276,6 @@ class Parser:
                 self.advance()
                 self.match('NETWORK')
 
-        # def salto_a_siguiente_instruccion(self):
-        # # # Salta hasta el siguiente punto y coma o fin del archivo
-        #     while self.index < len(self.tokens) and self.current[1] != 'PUNTOYCOMA':
-        #         self.advance() 
-        #         print('while',self.current)
-
-
 # --- INTERFAZ GRÁFICA ---
 class NetworkLangEditor:
     def __init__(self):
@@ -399,11 +382,22 @@ class NetworkLangEditor:
         codigo = ""
         codigo = self.input_text.get('1.0','end-1c')
         self.texto_salida.config(state='normal'); self.texto_salida.delete('1.0','end')
+
         try:
             tokens = Lexico(codigo).tokenize()
-            self._mostrar_tokens(tokens)
+            if tokens :
+                self._mostrar_tokens(tokens)
         except ErrorLexico as e:
             self._mostrar_salida(str(e), error=True) #CAPTURA DE ERRORES Y COMPARACION CON LOS CREADOS
+
+        # lexer = Lexico(codigo)
+        # tokens = lexer.tokenize()
+
+       
+            
+        # for error in lexer.errores:
+        #     self.texto_salida.insert('end', str(error) + '\n')
+        # self._mostrar_salida(str(e), error=True) #CAPTURA DE ERRORES Y COMPARACION CON LOS CREADOS
             
 
     def compilar_sintactico(self):
@@ -419,6 +413,7 @@ class NetworkLangEditor:
             self.tablaSimbolosID.clear()
             self.tablaSimbolosKW.clear()
             self.tablaSimbolos.clear()
+
             for componente_lexico, val, ln, col in tokens: #IDENTIFICAR A QUE TOKEN PERTENECE Y MOSTRAR LA INFORMACIÓN NECESARIA
                 if componente_lexico in self.tokens_palabras_reservadas:
                     tokenTemp = self.Token(ln,col,componente_lexico,val)
@@ -430,20 +425,13 @@ class NetworkLangEditor:
                         self.tablaSimbolosID.append(tokenTemp)
                     else:
                         self.tablaSimbolos.append(tokenTemp)
-            self.texto_salida.config(state='disabled')
             self._mostrar_tablas()
-        # except ErrorLexico as e:
-        #     # self._mostrar_salida(str(e), error=True)
-
-        # # except SyntaxError as e:
-        # #     self._mostrar_salida(str(e), error=True) #CAPTURA DE ERRORES Y COMPARACION CON LOS CREADOS
-        # except ErrorSintactico as e:
+            if not parser.errores:
+               self.texto_salida.insert('end', 'SIN ERRORES SINTACTICOS' + '\n') 
             for error in parser.errores:
-                 self.texto_salida.insert('end', str(error) + '\n')
-                # self._mostrar_salida(str(error), error=True)
-        #     print("hello")
-            # self._mostrar_salida(str(e), error=True) #CAPTURA DE ERRORES Y COMPARACION CON LOS CREADOS
-           
+                self.texto_salida.insert('end', str(error) + '\n')
+        # except ErrorLexico as e:
+        #     self.texto_salida.insert('end', str(e) + '\n')
 
     #CLASE QUE MUESTRA LOS TOKENS
     def _mostrar_tokens(self, toks):
@@ -460,7 +448,6 @@ class NetworkLangEditor:
                 self.texto_salida.insert('end', f"{ln}:{col}\t{componente_lexico}\t{val}    \n")
                 tokenTemp = self.Token(ln,col,componente_lexico,val)
                 if tokenTemp.componenteLexico == 'IDENTIFICADOR':
-                    print("soy un identificador")
                     self.tablaSimbolosID.append(tokenTemp)
                 else:
                     self.tablaSimbolos.append(tokenTemp)
